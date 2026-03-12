@@ -43,3 +43,5 @@ temp_upload.jpg
 # 6. ARQUIVOS DO SISTEMA OPERACIONAL
 .DS_Store
 Thumbs.db
+
+data/production_logs/
