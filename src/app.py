@@ -7,135 +7,115 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import os
+import cv2
+
+# Importamos a função de explicabilidade que já tínhamos criado
+from explain import generate_gradcam
 
 # Configuração da Página
 st.set_page_config(page_title="Dermato AI - Diagnóstico Auditável", layout="wide")
 
-# Mapeamento das classes do dataset HAM10000
 CLASSES = {
-    0: "Queratose Actínica (Cancerígena)",
-    1: "Carcinoma Basocelular",
-    2: "Lesões Benignas tipo Queratose",
-    3: "Dermatofibroma",
-    4: "Melanoma (Altamente Maligno)",
-    5: "Nevos Melanocíticos (Pintas Comuns)",
-    6: "Lesões Vasculares"
+    0: "Queratose Actínica", 1: "Carcinoma Basocelular", 2: "Lesões Benignas",
+    3: "Dermatofibroma", 4: "Melanoma", 5: "Nevos (Pintas)", 6: "Lesões Vasculares"
 }
 
-# --- FUNÇÃO DE LOG PARA DATA DRIFT (LGPD-Compliant) ---
+# --- LOG DE DATA DRIFT (LGPD) ---
 def log_drift_embedding(model, image_tensor, prediction):
-    """
-    Extrai o vetor de características (Embedding) da MobileNetV3.
-    Salva apenas a estatística matemática, garantindo a privacidade do paciente.
-    """
     try:
         model.eval()
         with torch.no_grad():
-            # Extraímos as características antes da última camada de classificação
             features = model.features(image_tensor)
             pooled = model.avgpool(features)
             embedding = torch.flatten(pooled, 1).numpy()[0]
         
-        # Criamos o registro com Timestamp e o Vetor de 1.280 dimensões
-        log_data = {
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "previsao": prediction
-        }
-        # Adiciona cada dimensão do embedding como uma coluna
+        log_data = {"timestamp": datetime.now().isoformat(), "previsao": prediction}
         for i, val in enumerate(embedding):
             log_data[f"feat_{i}"] = val
             
-        # Salva em CSV (Append mode)
         os.makedirs("data/production_logs", exist_ok=True)
         log_path = "data/production_logs/drift_embeddings.csv"
-        
         df_new = pd.DataFrame([log_data])
+        
         if not os.path.isfile(log_path):
             df_new.to_csv(log_path, index=False)
         else:
             df_new.to_csv(log_path, mode='a', header=False, index=False)
-            
     except Exception as e:
-        st.warning(f"Aviso de Sistema: Erro ao registrar logs de auditoria técnica ({e})")
+        print(f"Erro no log de drift: {e}")
 
 # --- CARREGAMENTO DO MODELO ---
 @st.cache_resource
 def load_trained_model():
-    # Usamos MobileNetV3 Large para balanço entre performance e precisão em CPU
     model = models.mobilenet_v3_large(weights=None)
-    
-    # Ajustamos a cabeça de saída para as nossas 7 classes
     num_ftrs = model.classifier[3].in_features
     model.classifier[3] = nn.Linear(num_ftrs, len(CLASSES))
     
-    # Carregamos os pesos treinados
     model_path = "models/checkpoints/mobilenet_v3_dermato.pth"
     if os.path.exists(model_path):
         model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
-    
     model.eval()
     return model
 
-# --- INTERFACE STREAMLIT ---
+# --- INTERFACE ---
 def main():
-    st.title("🏥 Dermato AI: Sistema de Triagem e MLOps")
-    st.markdown("""
-        Este sistema utiliza Deep Learning para auxiliar na triagem de lesões dermatológicas. 
-        **Privacidade:** As imagens enviadas são processadas em memória e descartadas imediatamente. 
-        Apenas metadados matemáticos são retidos para monitoramento de drift.
-    """)
-
+    st.title("🏥 Dermato AI - Triagem com Auditoria Visual")
+    
     model = load_trained_model()
+    
+    uploaded_file = st.sidebar.file_uploader("Carregar imagem da lesão", type=["jpg", "png", "jpeg"])
 
-    col1, col2 = st.columns([1, 1])
-
-    with col1:
-        st.subheader("📸 Upload da Imagem")
-        uploaded_file = st.file_uploader("Selecione uma imagem dermatoscópica...", type=["jpg", "jpeg", "png"])
+    if uploaded_file:
+        img = Image.open(uploaded_file).convert('RGB')
         
-        if uploaded_file:
-            image = Image.open(uploaded_file).convert('RGB')
-            st.image(image, caption="Imagem Original", use_container_width=True)
+        # Pré-processamento
+        preprocess = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+        input_tensor = preprocess(img).unsqueeze(0)
 
-    with col2:
-        st.subheader("🔍 Análise de Inteligência Artificial")
-        
-        if uploaded_file:
-            # Pré-processamento (idêntico ao treino)
-            preprocess = transforms.Compose([
-                transforms.Resize(256),
-                transforms.CenterCrop(224),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ])
+        # Execução do Pipeline (IA + XAI + DRIFT)
+        with st.status("Analizando tecidos e gerando auditoria visual...", expanded=True) as status:
+            # 1. Inferência
+            output = model(input_tensor)
+            prob = torch.nn.functional.softmax(output[0], dim=0)
+            conf, idx = torch.max(prob, 0)
+            res = CLASSES[idx.item()]
             
-            input_tensor = preprocess(image).unsqueeze(0)
+            # 2. XAI (Grad-CAM)
+            heatmap = generate_gradcam(model, input_tensor, target_layer=model.features[-1])
+            
+            # 3. Log de Drift (Furtivo)
+            log_drift_embedding(model, input_tensor, res)
+            
+            status.update(label="Análise concluída!", state="complete", expanded=False)
 
-            with st.spinner("Analisando padrões morfológicos..."):
-                # Inferência
-                with torch.no_grad():
-                    output = model(input_tensor)
-                    probabilities = torch.nn.functional.softmax(output[0], dim=0)
-                    prob, class_id = torch.max(probabilities, 0)
-                
-                prediction = CLASSES[class_id.item()]
-                confidencia = prob.item() * 100
+        # Exibição Lado a Lado
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Imagem Original")
+            st.image(img, use_container_width=True)
+            
+        with col2:
+            st.subheader("Auditoria Visual (Grad-CAM)")
+            st.image(heatmap, use_container_width=True)
+            st.caption("As áreas em vermelho indicam onde a IA focou para o diagnóstico.")
 
-                # --- DISPARA LOG DE DRIFT ---
-                log_drift_embedding(model, input_tensor, prediction)
+        # Resultados Clínicos
+        st.divider()
+        c1, c2 = st.columns(2)
+        c1.metric("Diagnóstico", res)
+        c2.metric("Confiança", f"{conf.item()*100:.2f}%")
 
-                # Exibição de Resultados
-                st.metric(label="Diagnóstico Provável", value=prediction)
-                st.progress(confidencia / 100)
-                st.write(f"**Grau de Confiança:** {confidencia:.2f}%")
+        if idx.item() in [0, 4]:
+            st.error("⚠️ ALERTA: Lesão com alta probabilidade de malignidade. Encaminhar para biópsia urgente.")
+        else:
+            st.success("✅ Nota: Características morfológicas sugestivas de benignidade.")
 
-                if class_id.item() in [0, 1, 4]:
-                    st.error("⚠️ Atenção: Esta lesão apresenta características de alta prioridade clínica. Recomenda-se biópsia.")
-                else:
-                    st.info("ℹ️ Nota: Lesão com características de acompanhamento de rotina.")
-
-    st.divider()
-    st.caption("Aviso Legal: Esta ferramenta é uma Prova de Conceito (PoC) para MLOps e não substitui o diagnóstico médico.")
+    else:
+        st.info("Aguardando upload de imagem dermatoscópica no menu lateral.")
 
 if __name__ == "__main__":
     main()
