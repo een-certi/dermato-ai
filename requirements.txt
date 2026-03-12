@@ -19,6 +19,7 @@ optuna-dashboard
 
 # 3. Interface Clínica Web
 streamlit
+altair==4.2.2
 
 # 4. Infraestrutura, Segurança e Testes
 python-dotenv
