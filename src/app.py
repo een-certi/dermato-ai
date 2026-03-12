@@ -9,7 +9,7 @@ from datetime import datetime
 import os
 import cv2
 import sys
-from src.explain import generate_gradcam
+from explain import generate_gradcam
 
 # Força o Python a incluir a pasta 'src' na busca de arquivos
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
