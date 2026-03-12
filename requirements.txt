@@ -1,0 +1,26 @@
+# ==========================================
+# DERMATO AI - Dependências de Produção
+# ==========================================
+
+# 1. Core de Machine Learning & Visão Computacional
+torch
+torchvision
+numpy
+pandas
+scikit-learn
+h5py
+opencv-python
+Pillow
+
+# 2. Governança, MLOps e Otimização
+mlflow
+optuna
+optuna-dashboard
+
+# 3. Interface Clínica Web
+streamlit
+
+# 4. Infraestrutura, Segurança e Testes
+python-dotenv
+pytest
+kaggle

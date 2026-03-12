@@ -1,0 +1,45 @@
+# ==========================================
+# DERMATO AI - Arquivo de Ignorados do Git
+# ==========================================
+
+# 1. SEGURANÇA E AMBIENTE (Crítico)
+.env
+.venv/
+venv/
+env/
+
+# 2. CACHE DO PYTHON E IDEs
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.vscode/
+
+# 3. DADOS PESADOS (Governança de Dados)
+# Ignora tudo dentro das pastas de dados, exceto arquivos de instrução (se houver)
+data/raw/*
+data/processed/*
+*.zip
+*.h5
+*.hdf5
+*.jpg
+*.png
+*.csv
+
+# 4. MODELOS DE INTELIGÊNCIA ARTIFICIAL (Pesos Binários)
+# Modelos devem ser versionados no MLflow ou S3, não no Git
+models/checkpoints/*
+models/registry/*
+*.pth
+*.pt
+
+# 5. AUDITORIA E LOGS LOCAIS
+# O histórico de testes e painéis não deve sujar o repositório
+mlruns/
+optuna_estudo.db
+*.log
+temp_upload.jpg
+
+# 6. ARQUIVOS DO SISTEMA OPERACIONAL
+.DS_Store
+Thumbs.db
