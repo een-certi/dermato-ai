@@ -8,9 +8,11 @@ import pandas as pd
 from datetime import datetime
 import os
 import cv2
+import sys
+from src.explain import generate_gradcam
 
-# Importamos a função de explicabilidade que já tínhamos criado
-from explain import generate_gradcam
+# Força o Python a incluir a pasta 'src' na busca de arquivos
+sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 
 # Configuração da Página
 st.set_page_config(page_title="Dermato AI - Diagnóstico Auditável", layout="wide")
